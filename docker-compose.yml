@@ -1,0 +1,59 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fastapi_template
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./app:/app/app
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --loop uvloop --http httptools --reload"
+    environment:
+      - DATABASE_URL=postgresql://viraluser:viralpass@postgres:5432/viraldb
+      - VALKEY_URL=redis://valkey:6379/0
+      - DB_POOL_MIN_SIZE=5
+      - DB_POOL_MAX_SIZE=20
+      - CACHE_TTL_SECONDS=3600
+    depends_on:
+      postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: viral_postgres
+    environment:
+      - POSTGRES_USER=viraluser
+      - POSTGRES_PASSWORD=viralpass
+      - POSTGRES_DB=viraldb
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U viraluser -d viraldb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  valkey:
+    image: valkey/valkey:8.0-alpine
+    container_name: viral_valkey
+    command: valkey-server --save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
